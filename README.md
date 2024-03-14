@@ -1,2 +1,2 @@
-# q-learning in continuous time
+# q-learning in Continuous Time
 Master Thesis

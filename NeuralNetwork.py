@@ -1,10 +1,11 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 class NeuralNetwork:
-    def __init__(self, layer_sizes, learning_rate=0.1):
+    def __init__(self, layer_sizes, learning_rates=[0.2, 0.1]):
         self.layer_sizes = layer_sizes
         self.num_layers = len(layer_sizes) # L + 1 input layer (l=0)
-        self.learning_rate = learning_rate
+        self.learning_rates = learning_rates
         
         # Initialize weights and biases
         self.weights = [np.random.randn(layer_sizes[i+1], layer_sizes[i]) for i in range(self.num_layers - 1)]
@@ -13,12 +14,12 @@ class NeuralNetwork:
         # Initialize weights and bias derivatives
         self.weight_derivatives = [None]*(self.num_layers - 1)
         self.bias_derivatives = [None]*(self.num_layers - 1)
-        
+    
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
     
-    def sigmoid_derivative(self, x):
-        return x * (1 - x)
+    def sigmoid_derivative(self, a): # as a function of activation
+        return a * (1 - a)
     
     def relu(self, x):
         return x * (x >= 0)
@@ -27,67 +28,94 @@ class NeuralNetwork:
         return 1*(x >= 0)
     
     def feedforward(self, X):
-        activations = [X]
-        z = [None]*(self.num_layers - 1)
-        for i in range(self.num_layers - 1):
-            z[i] = np.dot(self.weights[i], activations[-1]) + self.biases[i]
-            activations.append(self.relu(z[i]))
-        return activations, z
+        activations = [X] # L + 1, 0,...,L+1
+        Z = [None]*(self.num_layers - 1) # L, 1,...,L
+        for i in range(self.num_layers - 1): # L times
+            Z[i] = np.dot(self.weights[i], activations[-1]) + self.biases[i]
+            if i == self.num_layers - 2:
+                activations.append(Z[i]) # output is a real number
+            else:
+                activations.append(self.sigmoid(Z[i]))
+        return activations, Z
     
     def eval(self, X):
         a,_ = self.feedforward(X)
-        return a[-1][0][0]
-
-    def backward(self, X, y, activations):
+        if len(a) == 1:
+            return a[-1][0][0] # real number
+        else:
+            return a[-1] # vector
+    
+    def backward(self, y, activations, Z, epoch, epochs):
         # Compute gradients
-        deltas = [None] * (self.num_layers - 1)
-        deltas[-1] = (y - activations[-1]) * self.sigmoid_derivative(activations[-1])
+        dZ = [None] * (self.num_layers - 1)
+        dZ[-1] = (y - activations[-1])
         
-        for l in range(self.num_layers - 2, 0, -1):
-            deltas[l-1] = np.dot(deltas[l], self.weights[l].T) * self.sigmoid_derivative(activations[l])
+        for l in range(self.num_layers - 2, 0, -1): #L-1,...,1 i.e., L-1 times
+            dZ[l-1] = np.dot(self.weights[l].T, dZ[l]) * self.sigmoid_derivative(activations[l]) # this is correct, since lth activation is the l-1th z, in our implementation. z at 0th layer doesnt exist. This means taking -1 on each z in the formulas when implementing in this algorithm. See it as we have removed a None in the z list. Same for W and b. There is no 0th weight and bias.
         
         # Update weights and biases
         for l in range(self.num_layers - 1):
-            self.weights[l] += np.dot(activations[l].T, deltas[l]) * self.learning_rate
-            self.biases[l] += np.sum(deltas[l], axis=0, keepdims=True) * self.learning_rate
+            self.weights[l] += 1/100*np.dot(dZ[l], activations[l].T) * self.learning_rates[(len(self.learning_rates)*epoch - 1)//epochs]
+            self.biases[l] += 1/100*np.sum(dZ[l], axis=1, keepdims=True) * self.learning_rates[(len(self.learning_rates)*epoch - 1)//epochs]
     
+    def gradient(self, X):
+        """
+        Compute the gradients for of the neural network evalueted at X outputting a real number,
+        with sigmoid activation functions for layers 1,...,L-1 and linear activation function for layer L.
+        This is the same as backpropagation with cost function a[L].
+
+        Args:
+        - X (ndarray): Column vector input to the neural network of dim (n,1).
+
+        Returns:
+        - weight_grads_l (list, len = L): List of gradients wrt the weights for each layer evaluated at X.
+        - bias_grads (list, len = L):  List of gradients wrt the biases for each layer evaluated at X.
+        """
+
+        activations, z = self.feedforward(X) # X dependance
+        dZ = [None] * (self.num_layers - 1) # L values
+        dZ[-1] = np.array([[1]]) # L th layer derivative is 1 in the case of no (i.e., linear) activation function in last layer.
+        
+        for l in range(self.num_layers - 2, 0, -1): # L-1 to 1
+            dZ[l-1] = np.dot(self.weights[l].T, dZ[l]) * self.sigmoid_derivative(activations[l])
+        
+        # Append derivatives
+        for l in range(self.num_layers - 1):
+            self.weight_derivatives[l] =  np.dot(dZ[l], activations[l].T) # (n_{l-1}, n_l)
+            self.bias_derivatives[l] = dZ[l]
+        return self.weight_derivatives, self.bias_derivatives
+    
+
     def train(self, X, y, epochs):
         for epoch in range(epochs):
-            activations = self.feedforward(X)
-            self.backward(X, y, activations)
+            activations, Z = self.feedforward(X)
+            assert activations[-1].shape == y.shape
+            self.backward(y, activations, Z, epoch, epochs)
             if epoch % 100 == 0:
                 loss = np.mean(np.square(y - activations[-1]))
                 print(f'Epoch {epoch}: Loss = {loss}')
-
-    def gradient(self, X):
-        # Compute gradients
-        activations, z = self.feedforward(X)
-        delta_z = [None] * (self.num_layers - 1) # L values
-        delta_z[-1] = self.relu_derivative(z[-1]) # L th layer
-        
-        for l in range(self.num_layers - 2, 0, -1): # L-1 to 1
-            delta_z[l-1] = np.dot(self.weights[l].T, delta_z[l]) * self.relu_derivative(z[l-1])
-        
-        # Update weights and biases
-        for l in range(self.num_layers - 1):
-            self.weight_derivatives[l] =  np.dot(delta_z[l], activations[l].T)
-            self.bias_derivatives[l] = delta_z[l]
-
 
 # Example usage:
 
 #y = np.array([[0], [1], [1], [0]]).T
 
 # Define layer sizes (including input and output layers)
-layer_sizes = [10, 30, 3, 1]
+if __name__ == "__main__":
+    layer_sizes = [1, 100, 50, 10, 5, 1]
 
-X = np.random.randn(layer_sizes[0],1)
+    X = np.linspace(-2*np.pi,2*np.pi, 100).reshape(1,-1)
+    y = np.sin(X)
+    nn = NeuralNetwork(layer_sizes)
+    nn.train(X, y, 10000)
+    y_nn = nn.eval(X)
+    plt.figure()
+    plt.plot(X[0], y[0])
+    plt.plot(X[0], y_nn[0])
+    plt.grid()
+    plt.show()
 
-nn = NeuralNetwork(layer_sizes)
-nn.gradient(X)
-
-# Test the trained network
-print("Output after training:")
-print(nn.eval(X))
-print(nn.weight_derivatives)
-print(nn.bias_derivatives)
+    # Test the trained network
+    print("Output after training:")
+    print(nn.eval(X))
+    #print(nn.weight_derivatives)
+    #print(nn.bias_derivatives)

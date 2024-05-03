@@ -16,6 +16,7 @@ class NeuralNetwork:
         self.bias_derivatives = [None]*(self.num_layers - 1)
     
     def sigmoid(self, x):
+        print(x)
         return 1 / (1 + np.exp(-x))
     
     def sigmoid_derivative(self, a): # as a function of activation

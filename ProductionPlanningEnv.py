@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 #np.random.seed(100)
 
 class ProductionPlanningEnv:
-    def __init__(self, initial_price, final_time, max_steps, demand, volatility):
+    def __init__(self, final_time, max_steps, initial_price, demand, volatility, B):
         """
         Initialize the environment.
         
@@ -15,28 +15,29 @@ class ProductionPlanningEnv:
         """
         self.X0 = initial_price
         self.Xt = initial_price
-        self.t0 = 0
-        self.t = 0
         self.T = final_time
         self.max_steps = max_steps
         self.mu = demand # mu
         self.sigma = volatility # sigma
         self.dt = final_time/max_steps  # Time increment
-        self.t_list = np.linspace(0, final_time, max_steps+1)
+        self.t = np.linspace(0, final_time, max_steps+1)
         # self.Wt = self.brownian_motion()
         self.steps_elapsed = 0
 
-    def brownian_motion(self):
-        N=20000
-        t=self.t.reshape(1,-1)
-        k=np.arange(N).reshape(-1,1)
-        Z=np.random.randn(N).reshape(-1,1)
-        Wt=np.sqrt(2*self.T)/np.pi*np.sum( np.sin((k+0.5) @ t * np.pi/self.T)/(k+0.5)*Z , axis=0)
-        #plt.figure()
-        #plt.plot(t[0],x, linewidth = 0.7)
-        #plt.grid()
-        #plt.show()
-        return Wt
+    #def brownian_motion(self):
+    #    N=20000
+    #    t=self.t.reshape(1,-1)
+    #    k=np.arange(N).reshape(-1,1)
+    #    Z=np.random.randn(N).reshape(-1,1)
+    #    Wt=np.sqrt(2*self.T)/np.pi*np.sum( np.sin((k+0.5) @ t * np.pi/self.T)/(k+0.5)*Z , axis=0)
+    #    plt.figure()
+    #    plt.plot(t[0],x, linewidth = 0.7)
+    #    plt.grid()
+    #    plt.show()
+    #    return Wt
+
+    def h_func(self, x):
+        return self.B*x
 
     def reset(self):
         """Reset the environment to its initial state."""
@@ -63,12 +64,12 @@ class ProductionPlanningEnv:
 
         # Update price based on geometric Brownian motion formula (Euler forward)
         drift_component = (action - self.mu) * self.dt
-        diffusion_component = self.sigma * np.sqrt(self.Xt) * dWt
+        diffusion_component = self.sigma * dWt
         dXt = drift_component + diffusion_component
         self.Xt += dXt
 
         # Define reward based on action (for example, holding)
-        reward = - (self.Xt**2 +action**2) # r(t,x,a) = -(x^2 + a^2)
+        reward = - (self.Xt**2 + action**2) # r(t,x,a) = -(x^2 + a^2)
 
         # Check if episode is done
         self.steps_elapsed += 1
